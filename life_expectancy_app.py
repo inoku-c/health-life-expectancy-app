@@ -1,226 +1,167 @@
 """
-Life Expectancy App
-===================
+Life Expectancy Estimator — Evidence-Based Model
+=================================================
 
-This script demonstrates a simple approach to estimate an individual's
-"healthy life expectancy" based on common health and lifestyle factors.
-It is **not** a medical device and should not be used to make decisions in
-healthcare or insurance domains.  The model is trained on a synthetic
-dataset created for demonstration purposes only.
+This module estimates life expectancy using risk coefficients derived from
+peer-reviewed epidemiological research. It does NOT use synthetic data.
 
-The features used include:
+Data sources and references:
+- Base life expectancy: WHO World Health Statistics 2023
+  (Japan: M 81.5, F 87.6 / Global: M 70.8, F 75.9)
+- Smoking: Doll et al., BMJ 2004 — ~10 years reduction for lifelong smokers
+- BMI: Global BMI Mortality Collaboration, Lancet 2016
+  — U-shaped curve, optimal BMI 22.5, each 5 kg/m² above → HR 1.29
+- Physical activity: Wen et al., Lancet 2011
+  — 15 min/day exercise → +3 years; meeting guidelines → +4.5 years
+- Diet: Sofi et al., BMJ 2008 (Mediterranean diet meta-analysis)
+  — healthy diet → ~4 years reduction in mortality-equivalent
+- Alcohol: Wood et al., Lancet 2018
+  — heavy drinking → ~2–5 years reduction
+- Blood pressure: Lewington et al., Lancet 2002 (Prospective Studies)
+  — each 20 mmHg above 115 → doubles CVD risk
+- Cholesterol: Emerging Risk Factors Collaboration, Lancet 2009
+  — each 1 mmol/L (~39 mg/dL) increase → HR 1.17 for vascular mortality
+- Chronic conditions: GBD 2019 study, Lancet 2020
+  — diabetes: −6 yrs, heart disease: −7 yrs, average chronic: −5 yrs
 
-  - `age` (years): chronological age of the individual.
-  - `gender` (0 for male, 1 for female): sex assigned at birth.
-  - `bmi` (kg/m²): body mass index.
-  - `smoking` (0/1): whether the person currently smokes.
-  - `alcohol` (0/1): whether the person consumes alcohol frequently.
-  - `physical_activity` (0/1): whether the person meets recommended physical activity
-    levels (≥150 minutes of moderate or ≥75 minutes of vigorous activity per week).
-  - `diet` (0/1): whether the person follows a healthy diet (rich in fruits,
-    vegetables, whole grains and lean proteins, and low in refined sugars and
-    saturated fat).
-  - `blood_pressure` (mmHg): systolic blood pressure.
-  - `cholesterol` (mg/dL): total cholesterol concentration.
-  - `chronic_condition` (0/1): whether the person has a major chronic
-    condition (e.g., diabetes, heart disease, hypertension, asthma).
-
-The synthetic dataset is generated using reasonable rules of thumb drawn from
-epidemiological literature: poor lifestyle factors and chronic conditions
-reduce expected lifespan, while healthy behaviours and optimal biometrics
-extend it.  The base life expectancy is set around 90 years for illustrative
-purposes.
-
-The trained model is a random forest regressor from scikit‑learn.  Once
-trained, the script exposes a `predict_life_expectancy` function that takes
-a dictionary of feature values and returns the estimated life expectancy.
-
-Because this example relies on randomly simulated data, the resulting
-predictions should be viewed purely as an educational tool.  In a real
-application you would train the model on a large, validated cohort dataset
-containing actual clinical and lifestyle information, following rigorous
-ethical guidelines for data handling, model validation and bias mitigation.
+This is an educational tool. It is NOT a medical device.
 """
 
-import numpy as np
-import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error
-import joblib
 
-
-def generate_synthetic_dataset(n_samples: int = 5000, random_state: int = 42) -> pd.DataFrame:
-    """Generate a synthetic dataset for life expectancy prediction.
+def estimate_life_expectancy(user_features: dict) -> dict:
+    """Estimate life expectancy using evidence-based risk coefficients.
 
     Parameters
     ----------
-    n_samples : int
-        Number of synthetic individuals to simulate.
-    random_state : int
-        Seed for reproducibility.
-
-    Returns
-    -------
-    df : pandas.DataFrame
-        DataFrame containing feature columns and the target (life_expectancy).
-    """
-    rng = np.random.default_rng(random_state)
-
-    # Continuous variables
-    ages = rng.integers(20, 81, size=n_samples)  # Age between 20 and 80
-    gender = rng.integers(0, 2, size=n_samples)  # 0 = male, 1 = female
-    bmi = rng.uniform(18.0, 40.0, size=n_samples)  # BMI 18–40
-    blood_pressure = rng.uniform(90.0, 180.0, size=n_samples)  # Systolic blood pressure
-    cholesterol = rng.uniform(150.0, 300.0, size=n_samples)  # Total cholesterol
-
-    # Binary variables (0 or 1)
-    smoking = rng.integers(0, 2, size=n_samples)
-    alcohol = rng.integers(0, 2, size=n_samples)
-    physical_activity = rng.integers(0, 2, size=n_samples)
-    diet = rng.integers(0, 2, size=n_samples)
-    chronic_condition = rng.integers(0, 2, size=n_samples)
-
-    # Calculate baseline remaining years
-    base_expectancy = 90.0  # baseline life expectancy (years)
-    remaining_years = (
-        base_expectancy
-        - ages
-        # BMI penalty: distance from BMI=21; penalise overweight/underweight
-        - np.abs(bmi - 21.0) * 0.5
-        # Smoking penalty
-        - smoking * 5.0
-        # Alcohol penalty
-        - alcohol * 3.0
-        # Physical activity: +2 if active, -2 if not
-        + (physical_activity * 2.0) - ((1 - physical_activity) * 2.0)
-        # Diet: +2 if healthy, -2 if unhealthy
-        + (diet * 2.0) - ((1 - diet) * 2.0)
-        # Blood pressure penalty relative to optimal 120 mmHg
-        - (blood_pressure - 120.0) * 0.05
-        # Cholesterol penalty relative to optimal 200 mg/dL
-        - (cholesterol - 200.0) * 0.03
-        # Chronic condition penalty
-        - chronic_condition * 5.0
-    )
-
-    # Ensure remaining years are at least 5 years
-    remaining_years = np.maximum(remaining_years, 5.0)
-    life_expectancy = ages + remaining_years
-
-    data = {
-        "age": ages,
-        "gender": gender,
-        "bmi": bmi,
-        "smoking": smoking,
-        "alcohol": alcohol,
-        "physical_activity": physical_activity,
-        "diet": diet,
-        "blood_pressure": blood_pressure,
-        "cholesterol": cholesterol,
-        "chronic_condition": chronic_condition,
-        "life_expectancy": life_expectancy,
-    }
-    df = pd.DataFrame(data)
-    return df
-
-
-def train_model(df: pd.DataFrame) -> RandomForestRegressor:
-    """Train a random forest regressor on the synthetic dataset.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        DataFrame containing features and target.
-
-    Returns
-    -------
-    model : RandomForestRegressor
-        Trained model.
-    """
-    features = [
-        "age",
-        "gender",
-        "bmi",
-        "smoking",
-        "alcohol",
-        "physical_activity",
-        "diet",
-        "blood_pressure",
-        "cholesterol",
-        "chronic_condition",
-    ]
-    X = df[features]
-    y = df["life_expectancy"]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-    model = RandomForestRegressor(n_estimators=200, random_state=42)
-    model.fit(X_train, y_train)
-    preds = model.predict(X_test)
-    mae = mean_absolute_error(y_test, preds)
-    print(f"Training complete. Mean Absolute Error on holdout: {mae:.2f} years")
-    return model
-
-
-def predict_life_expectancy(model: RandomForestRegressor, user_features: dict) -> float:
-    """Estimate life expectancy given user input features.
-
-    Parameters
-    ----------
-    model : RandomForestRegressor
-        Trained random forest model.
     user_features : dict
-        Dictionary mapping feature names to values. Required keys: age, gender,
-        bmi, smoking, alcohol, physical_activity, diet, blood_pressure,
-        cholesterol, chronic_condition.
+        Keys: age, gender (0=male, 1=female), bmi, smoking (0/1),
+        alcohol (0/1), physical_activity (0/1), diet (0/1),
+        blood_pressure (systolic mmHg), cholesterol (mg/dL),
+        chronic_condition (0/1).
 
     Returns
     -------
-    float
-        Predicted life expectancy in years.
+    dict with keys:
+        - life_expectancy: float (estimated age at death)
+        - remaining_years: float
+        - factor_impacts: dict mapping factor name → years impact
+        - references: list of source citations
     """
-    feature_order = [
-        "age",
-        "gender",
-        "bmi",
-        "smoking",
-        "alcohol",
-        "physical_activity",
-        "diet",
-        "blood_pressure",
-        "cholesterol",
-        "chronic_condition",
+    age = user_features["age"]
+    gender = user_features["gender"]  # 0 = male, 1 = female
+    bmi = user_features["bmi"]
+    smoking = user_features["smoking"]
+    alcohol = user_features["alcohol"]
+    physical_activity = user_features["physical_activity"]
+    diet = user_features["diet"]
+    bp = user_features["blood_pressure"]
+    chol = user_features["cholesterol"]
+    chronic = user_features["chronic_condition"]
+
+    # ── Base life expectancy (WHO 2023, Japan) ──
+    # Male: 81.5 years, Female: 87.6 years
+    base_le = 81.5 if gender == 0 else 87.6
+
+    factor_impacts = {}
+
+    # ── Smoking (Doll et al., BMJ 2004) ──
+    # Lifelong smokers lose ~10 years on average
+    # Assuming current smoker: −8 years (some may quit later)
+    smoking_impact = -8.0 if smoking else 0.0
+    factor_impacts["喫煙"] = smoking_impact
+
+    # ── BMI (Global BMI Mortality Collaboration, Lancet 2016) ──
+    # Optimal BMI: 22.5. U-shaped mortality curve.
+    # Each 5 kg/m² above 25 → ~30% higher mortality → approx −2.5 yrs per 5 units
+    # Below 18.5 (underweight) also increases risk
+    optimal_bmi = 22.5
+    if bmi < 18.5:
+        bmi_impact = -(18.5 - bmi) * 0.8  # underweight penalty
+    elif bmi <= 25.0:
+        bmi_impact = -abs(bmi - optimal_bmi) * 0.15  # minimal impact in normal range
+    else:
+        bmi_impact = -(bmi - 25.0) * 0.5  # overweight/obese penalty
+    bmi_impact = max(bmi_impact, -12.0)  # cap at −12 years
+    factor_impacts["BMI"] = round(bmi_impact, 2)
+
+    # ── Physical activity (Wen et al., Lancet 2011) ──
+    # Meeting WHO guidelines (150 min/wk moderate): +4.5 years vs sedentary
+    # Not meeting: −2.0 years relative to baseline
+    if physical_activity:
+        activity_impact = 4.5
+    else:
+        activity_impact = -2.0
+    factor_impacts["運動習慣"] = activity_impact
+
+    # ── Diet (Sofi et al., BMJ 2008; EAT-Lancet 2019) ──
+    # Healthy diet adherence: +3.5 years
+    # Unhealthy diet: −2.0 years
+    if diet:
+        diet_impact = 3.5
+    else:
+        diet_impact = -2.0
+    factor_impacts["食生活"] = diet_impact
+
+    # ── Alcohol (Wood et al., Lancet 2018) ──
+    # Heavy/frequent drinking: −3.0 years
+    alcohol_impact = -3.0 if alcohol else 0.0
+    factor_impacts["飲酒"] = alcohol_impact
+
+    # ── Blood pressure (Lewington et al., Lancet 2002) ──
+    # Optimal: 115 mmHg. Each 20 mmHg above doubles CVD risk.
+    # Approximate life-years impact:
+    if bp <= 120:
+        bp_impact = 0.0
+    elif bp <= 140:
+        bp_impact = -(bp - 120) * 0.08  # stage 1: up to −1.6 yrs
+    elif bp <= 160:
+        bp_impact = -1.6 - (bp - 140) * 0.15  # stage 2: up to −4.6 yrs
+    else:
+        bp_impact = -4.6 - (bp - 160) * 0.2  # crisis: severe
+    bp_impact = max(bp_impact, -10.0)
+    factor_impacts["血圧"] = round(bp_impact, 2)
+
+    # ── Cholesterol (Emerging Risk Factors Collaboration, Lancet 2009) ──
+    # Optimal: ~200 mg/dL. Each 39 mg/dL above → HR 1.17
+    # Approximate: each 39 mg/dL above 200 → −1.2 years
+    if chol <= 200:
+        chol_impact = 0.0
+    else:
+        chol_impact = -((chol - 200) / 39.0) * 1.2
+    chol_impact = max(chol_impact, -8.0)
+    factor_impacts["コレステロール"] = round(chol_impact, 2)
+
+    # ── Chronic condition (GBD 2019, Lancet 2020) ──
+    # Average chronic condition: −5 years
+    chronic_impact = -5.0 if chronic else 0.0
+    factor_impacts["持病"] = chronic_impact
+
+    # ── Calculate total ──
+    total_impact = sum(factor_impacts.values())
+    life_expectancy = base_le + total_impact
+
+    # Ensure minimum remaining life of 1 year
+    life_expectancy = max(life_expectancy, age + 1.0)
+
+    remaining = life_expectancy - age
+
+    references = [
+        "WHO World Health Statistics 2023 — 基準平均寿命（日本: 男性81.5歳, 女性87.6歳）",
+        "Doll R, et al. BMJ 2004;328:1519 — 喫煙による寿命短縮（約10年）",
+        "Global BMI Mortality Collaboration. Lancet 2016;388:776 — BMIと死亡率のU字型曲線",
+        "Wen CP, et al. Lancet 2011;378:1244 — 運動による寿命延長（+3〜4.5年）",
+        "Sofi F, et al. BMJ 2008;337:a1344 — 健康的食事による死亡率低下",
+        "Wood AM, et al. Lancet 2018;391:1513 — 飲酒量と死亡リスク",
+        "Lewington S, et al. Lancet 2002;360:1903 — 血圧と心血管疾患リスク",
+        "Emerging Risk Factors Collaboration. Lancet 2009;374:1160 — コレステロールと血管死亡率",
+        "GBD 2019 Study. Lancet 2020;396:1204 — 慢性疾患の平均寿命への影響",
     ]
-    X_new = np.array([[user_features[k] for k in feature_order]])
-    prediction = model.predict(X_new)[0]
-    return float(prediction)
 
-
-def main():
-    """Entry point for running the training and demonstrating a prediction."""
-    df = generate_synthetic_dataset()
-    model = train_model(df)
-    # Save the model
-    joblib.dump(model, "life_expectancy_model.pkl")
-    print("Model saved to life_expectancy_model.pkl")
-
-    # Demonstration using a hypothetical user
-    user = {
-        "age": 45,
-        "gender": 0,  # male
-        "bmi": 28.0,
-        "smoking": 1,
-        "alcohol": 0,
-        "physical_activity": 1,
-        "diet": 0,
-        "blood_pressure": 130.0,
-        "cholesterol": 220.0,
-        "chronic_condition": 0,
+    return {
+        "life_expectancy": round(life_expectancy, 1),
+        "remaining_years": round(remaining, 1),
+        "factor_impacts": factor_impacts,
+        "base_le": base_le,
+        "total_impact": round(total_impact, 1),
+        "references": references,
     }
-    estimated_le = predict_life_expectancy(model, user)
-    print(f"Estimated life expectancy for sample user: {estimated_le:.1f} years")
-
-
-if __name__ == "__main__":
-    main()
