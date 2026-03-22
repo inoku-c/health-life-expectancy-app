@@ -1,6 +1,6 @@
-life_expectancy_app.py"""
-life_expectancy_app.py
-======================
+"""
+Life Expectancy App
+===================
 
 This script demonstrates a simple approach to estimate an individual's
 "healthy life expectancy" based on common health and lifestyle factors.
