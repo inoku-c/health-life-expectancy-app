@@ -6,7 +6,11 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 
-from life_expectancy_app import generate_synthetic_dataset, train_model, predict_life_expectancy
+try:
+    from life_expectancy_app import generate_synthetic_dataset, train_model, predict_life_expectancy
+except Exception as e:
+    st.error(f"Import error: {e}")
+    st.stop()
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
