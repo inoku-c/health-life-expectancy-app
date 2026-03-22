@@ -28,12 +28,11 @@ if qp.get("premium") == "true" or qp.get("session_id"):
 is_premium = st.session_state.is_premium
 
 # ── Stripe config ────────────────────────────────────────────────────────────
-# Get Stripe payment link from secrets (set in Streamlit Cloud dashboard)
+# Payment link: uses secrets if available, otherwise falls back to default
 try:
     STRIPE_PAYMENT_LINK = st.secrets["stripe"]["payment_link"]
 except Exception:
-    # Fallback: placeholder (user must configure secrets)
-    STRIPE_PAYMENT_LINK = None
+    STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_3cIbJ03DE2Br7P2cXLcwg00"
 
 # ── Custom CSS with animations ───────────────────────────────────────────────
 st.markdown("""
