@@ -38,8 +38,8 @@ if session_id and not st.session_state.is_premium:
             checkout_session = stripe.checkout.Session.retrieve(session_id)
             if checkout_session.payment_status == "paid":
                 st.session_state.is_premium = True
-        except stripe.StripeError as e:
-            st.warning(f"決済の確認に失敗しました。エラー: {e}")
+        except stripe.StripeError:
+            st.warning("決済の確認に失敗しました。もう一度お試しください。")
 
 is_premium = st.session_state.is_premium
 
