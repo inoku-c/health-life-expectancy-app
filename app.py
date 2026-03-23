@@ -5,6 +5,7 @@ Evidence-based model + Stripe $1 paywall for premium features.
 
 import streamlit as st
 import plotly.graph_objects as go
+import stripe
 
 from life_expectancy_app import estimate_life_expectancy
 
@@ -16,23 +17,31 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Stripe config ────────────────────────────────────────────────────────────
+try:
+    stripe.api_key = st.secrets["stripe"]["secret_key"]
+    STRIPE_PAYMENT_LINK = st.secrets["stripe"]["payment_link"]
+except Exception:
+    stripe.api_key = None
+    STRIPE_PAYMENT_LINK = None
+
 # ── Premium state management ────────────────────────────────────────────────
 if "is_premium" not in st.session_state:
     st.session_state.is_premium = False
 
-# Check for Stripe redirect (after successful payment)
+# Verify payment via Stripe API (secure — server-side check)
 qp = st.query_params
-if qp.get("premium") == "true" or qp.get("session_id"):
-    st.session_state.is_premium = True
+session_id = qp.get("session_id")
+if session_id and not st.session_state.is_premium:
+    if stripe.api_key:
+        try:
+            checkout_session = stripe.checkout.Session.retrieve(session_id)
+            if checkout_session.payment_status == "paid":
+                st.session_state.is_premium = True
+        except stripe.StripeError:
+            st.warning("決済の確認に失敗しました。もう一度お試しください。")
 
 is_premium = st.session_state.is_premium
-
-# ── Stripe config ────────────────────────────────────────────────────────────
-# Payment link: uses secrets if available, otherwise falls back to default
-try:
-    STRIPE_PAYMENT_LINK = st.secrets["stripe"]["payment_link"]
-except Exception:
-    STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_3cIbJ03DE2Br7P2cXLcwg00"
 
 # ── Custom CSS with animations ───────────────────────────────────────────────
 st.markdown("""
@@ -634,10 +643,10 @@ if not is_premium:
     else:
         st.warning(
             "決済リンクが未設定です。Streamlit Cloud の Secrets に "
-            "`[stripe]` セクションと `payment_link` を設定してください。"
+            "`[stripe]` セクションを設定してください。"
         )
         st.code(
-            '[stripe]\npayment_link = "https://buy.stripe.com/YOUR_LINK?success_url=https://YOUR_APP.streamlit.app/?premium=true"',
+            '[stripe]\npayment_link = "https://buy.stripe.com/YOUR_LINK"\nsecret_key = "sk_live_YOUR_KEY"',
             language="toml",
         )
 
