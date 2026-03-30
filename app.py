@@ -1,11 +1,11 @@
 """
 Healthy Life Expectancy Estimator — Streamlit UI (Japanese)
-Evidence-based model + Stripe $1 paywall for premium features.
+Evidence-based model + Buy Me a Coffee paywall for premium features.
 """
 
 import streamlit as st
 import plotly.graph_objects as go
-import stripe
+import os
 
 from life_expectancy_app import estimate_life_expectancy
 
@@ -17,29 +17,22 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Stripe config ────────────────────────────────────────────────────────────
+# ── Access code config ────────────────────────────────────────────────────────
+BMC_URL = "https://buymeacoffee.com/yino1802i/membership"
 try:
-    stripe.api_key = st.secrets["stripe"]["secret_key"]
-    STRIPE_PAYMENT_LINK = st.secrets["stripe"]["payment_link"]
+    ACCESS_CODES = set(st.secrets.get("ACCESS_CODES", "").split(","))
 except Exception:
-    stripe.api_key = None
-    STRIPE_PAYMENT_LINK = None
+    ACCESS_CODES = set()
 
 # ── Premium state management ────────────────────────────────────────────────
 if "is_premium" not in st.session_state:
     st.session_state.is_premium = False
 
-# Verify payment via Stripe API (secure — server-side check)
-qp = st.query_params
-session_id = qp.get("session_id")
-if session_id and not st.session_state.is_premium:
-    if stripe.api_key:
-        try:
-            checkout_session = stripe.checkout.Session.retrieve(session_id)
-            if checkout_session.payment_status == "paid":
-                st.session_state.is_premium = True
-        except stripe.StripeError:
-            st.warning("決済の確認に失敗しました。もう一度お試しください。")
+def check_access_code(code):
+    if code and code.strip() in ACCESS_CODES:
+        st.session_state.is_premium = True
+        return True
+    return False
 
 is_premium = st.session_state.is_premium
 
@@ -467,6 +460,14 @@ with st.sidebar:
         st.success("✨ プレミアムプラン利用中")
     else:
         st.info("🔒 無料プランをご利用中")
+        code_input = st.text_input("🔑 アクセスコード", type="password",
+                                     placeholder="メンバーコードを入力")
+        if code_input:
+            if check_access_code(code_input):
+                st.success("✅ アンロック成功！")
+                st.rerun()
+            else:
+                st.error("コードが正しくありません")
 
 # ── Build feature dict & predict ─────────────────────────────────────────────
 user_features = {
@@ -614,7 +615,7 @@ st.plotly_chart(fig_gauge, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  PREMIUM AREA — $1 で解放
+#  PREMIUM AREA — メンバー登録で解放
 # ══════════════════════════════════════════════════════════════════════════════
 
 if not is_premium:
@@ -623,7 +624,7 @@ if not is_premium:
     <div class="paywall">
         <h2>🔓 プレミアム分析をアンロック</h2>
         <p>さらに詳しい分析・アドバイスを受けるには、プレミアムプランをご利用ください。</p>
-        <div class="price">$1 <span style="font-size:1rem; opacity:0.7">USD（買い切り）</span></div>
+        <div class="price">$3 <span style="font-size:1rem; opacity:0.7">USD / 月</span></div>
         <ul class="features-list">
             <li>健康バランス・レーダーチャート</li>
             <li>各要因のインパクト分析（何が寿命を縮めているか）</li>
@@ -634,21 +635,11 @@ if not is_premium:
     </div>
     """, unsafe_allow_html=True)
 
-    if STRIPE_PAYMENT_LINK:
-        st.link_button(
-            "💳 プレミアムを購入する（$1 USD）",
-            STRIPE_PAYMENT_LINK,
-            use_container_width=True,
-        )
-    else:
-        st.warning(
-            "決済リンクが未設定です。Streamlit Cloud の Secrets に "
-            "`[stripe]` セクションを設定してください。"
-        )
-        st.code(
-            '[stripe]\npayment_link = "https://buy.stripe.com/YOUR_LINK"\nsecret_key = "sk_live_YOUR_KEY"',
-            language="toml",
-        )
+    st.markdown("#### 📝 利用手順")
+    st.markdown("1. 下のボタンから **メンバー登録**（$3/月）")
+    st.markdown("2. 登録後に届く **アクセスコード** をサイドバーに入力")
+    st.markdown("3. プレミアム機能がアンロックされます！")
+    st.link_button("☕ メンバーに登録する（$3/月）", BMC_URL, use_container_width=True)
 
 else:
     # ══════════════════════════════════════════════════════════════════════════
