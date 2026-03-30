@@ -20,7 +20,7 @@ st.set_page_config(
 # ── Access code config ────────────────────────────────────────────────────────
 BMC_URL = "https://buymeacoffee.com/yino1802i/membership"
 try:
-    ACCESS_CODES = set(st.secrets.get("ACCESS_CODES", "").split(","))
+    ACCESS_CODES = set(st.secrets["ACCESS_CODES"].split(","))
 except Exception:
     ACCESS_CODES = set()
 
